@@ -61,6 +61,9 @@ you want and every routine uses it until you pick another.
 - `question` (optional): the wording of that question when `prompt` is
   `null`. `{agent}` and `{project}` are filled in, as in
   `"What should {agent} do on {project}?"`.
+- `confirm` (optional): a question to ask before starting, with **Start**
+  and **Cancel** buttons. Handy for routines that need something ready
+  first, as in `"confirm": "Is the draft saved?"`.
 - `folder` (optional): use a different folder for just this routine.
 - `agent` (optional): always use this agent for this routine, whatever is
   ticked in the menu. The menu shows the agent's name after the title.
@@ -68,6 +71,17 @@ you want and every routine uses it until you pick another.
 A top-level `"routines"` list (outside any project) also works. Those
 routines appear in the main menu and need their own `folder` (it defaults
 to `~`).
+
+## Stopping a routine
+
+While a routine is running, the menu bar "A" shows a dot in place of its
+spark (and a number when more than one is running). The top of the menu
+lists each one with its agent and how long it has been going. Choose it,
+then **Stop** to end the agent the way Ctrl-C would. **Stop all** appears
+when more than one is running. The Terminal window then says "Stopped."
+and closes when you press a key.
+
+Agent Commander only stops agents it started itself.
 
 ## Menu layout
 

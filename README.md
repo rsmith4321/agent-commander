@@ -27,7 +27,7 @@ Agent Commander turns each of those into one menu click.
 
 ### From the release (easiest)
 
-1. Download `Agent-Commander-1.1.0.zip` from the
+1. Download `Agent-Commander-1.2.0.zip` from the
    [latest release](https://github.com/rsmith4321/agent-commander/releases/latest).
 2. Double-click the zip and drag **Agent Commander** into your Applications
    folder.
@@ -63,7 +63,14 @@ cd agent-commander
 - Tick the agent you want under **Agent**. Every routine uses it until you
   pick another, and Agent Commander remembers your choice.
 - A routine set to ask (like **Something else…**) shows a box where you type
-  what you want done.
+  what you want done. A routine with a `confirm` question asks it first, so
+  you can check you're ready before anything starts.
+- While a routine runs, the "A" in the menu bar shows a dot instead of its
+  spark (plus a count if several are running). The top of the menu lists
+  what's running and for how long; choose one, then **Stop**, or use
+  **Stop all**. The agent is stopped the way Ctrl-C would stop it, and its
+  Terminal window says "Stopped." Agent Commander only ever stops agents it
+  started.
 - **Edit routines…** opens your settings file. Changes appear the next time
   you open the menu, or right away with **Reload**.
 - **Open at login** starts Agent Commander when you log in.
@@ -97,6 +104,11 @@ that explains every option. Here is a small example:
           "title": "Review my uncommitted changes",
           "prompt": "Review the uncommitted changes in this repo. Point out bugs, but don't edit anything."
         },
+        {
+          "title": "Draft release notes",
+          "prompt": "Draft release notes from the commits since the last tag.",
+          "confirm": "Is everything for this release committed?"
+        },
         "-",
         { "title": "Something else…", "prompt": null }
       ]
@@ -124,7 +136,8 @@ agent wants it somewhere else, put `{prompt}` where it goes.
 several, each project gets a submenu.
 
 **Routines** have a `title` and a `prompt`. Set `"prompt": null` to type the
-request each time.
+request each time. Add `"confirm"` with a question to be asked (with Start
+and Cancel buttons) before the routine starts.
 
 **Extras:**
 
@@ -148,9 +161,19 @@ the agent with your prompt, then deletes itself. Opening a script file this
 way doesn't need any special macOS permissions. The prompt is quoted safely,
 so quotes, dollar signs and other symbols reach the agent exactly as written.
 
-The app is two small Swift files: [`Sources/main.swift`](Sources/main.swift)
-and [`Sources/Glyph.swift`](Sources/Glyph.swift), which draws the "A" for
-both the menu bar and the app icon (`Tools/make-icon.sh` rebuilds the icon).
+While it runs, the script leaves a small note in
+`~/Library/Application Support/Agent Commander/running/` with its process
+ID, and removes it when the agent finishes. That's how the menu knows what's
+running. **Stop** sends the agent an interrupt (twice, two seconds apart, as
+most agents want Ctrl-C pressed twice), then a terminate signal if it's
+still going three seconds later. Before signalling, the app checks the
+process is still the one its script started.
+
+The app is three small Swift files: [`Sources/main.swift`](Sources/main.swift),
+[`Sources/Running.swift`](Sources/Running.swift), which tracks and stops
+running agents, and [`Sources/Glyph.swift`](Sources/Glyph.swift), which draws
+the "A" for both the menu bar and the app icon (`Tools/make-icon.sh` rebuilds
+the icon).
 
 ## Compared to Rota
 

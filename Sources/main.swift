@@ -23,6 +23,7 @@ struct Routine {
     let question: String?   // optional wording for that question
     let project: String?    // the project it belongs to, if any
     let agent: String?      // always use this agent instead of the selected one
+    let confirm: String?    // ask this before starting
 }
 
 indirect enum MenuEntry {
@@ -169,7 +170,8 @@ enum ConfigFile {
                                     prompt: prompt,
                                     question: nonEmpty(obj["question"]),
                                     project: project,
-                                    agent: agent))
+                                    agent: agent,
+                                    confirm: nonEmpty(obj["confirm"])))
         }
     }
 
@@ -218,14 +220,20 @@ func openInTerminal(agent: Agent, routine: Routine, prompt: String) throws {
     let command = agent.command.contains("{prompt}")
         ? agent.command.replacingOccurrences(of: "{prompt}", with: quoted)
         : agent.command + " " + quoted
+    let id = String(UUID().uuidString.prefix(8))
+    var info: [String: String] = ["title": routine.title, "agent": agent.name]
+    info["project"] = routine.project
+    let infoJSON = String(data: try JSONSerialization.data(withJSONObject: info), encoding: .utf8)!
     let script = """
     #!/bin/zsh -l
     rm -f -- "$0"
+    \(Running.scriptPrologue(id: id, info: infoJSON))
     cd -- \(shellQuote(folder)) || { echo; echo \(shellQuote("\(appName) can't open the folder \(folder). Is the drive connected?")); read -k 1; exit 1; }
     clear
     printf '%s\\n%s\\n\\n' \(shellQuote("\(appName): " + [agent.name, routine.project, routine.title].compactMap { $0 }.joined(separator: " · "))) \(shellQuote("Folder: \(folder)"))
     \(command)
     code=$?
+    \(Running.scriptEpilogue)
     if (( code == 127 )); then
       echo
       echo \(shellQuote("\(appName) couldn't find the \(agent.name) command. Open the menu, choose Edit routines…, and put the full path in \"command\"."))
@@ -233,7 +241,7 @@ func openInTerminal(agent: Agent, routine: Routine, prompt: String) throws {
     exit $code
     """
     let url = FileManager.default.temporaryDirectory
-        .appendingPathComponent("agent-commander-\(UUID().uuidString.prefix(8)).command")
+        .appendingPathComponent("agent-commander-\(id).command")
     try script.write(to: url, atomically: true, encoding: .utf8)
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
     let terminal = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
@@ -253,15 +261,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var loadError: String?
     var loadedDate: Date?
     var found: [String: Bool] = [:]   // agent command -> exists on PATH
+    var running: [RunningTask] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         ConfigFile.createIfMissing()
         applyLoginArgument()
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
         menu.delegate = self
         statusItem.menu = menu
         reload()
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.refreshRunning() }
+        RunLoop.main.add(timer, forMode: .common)
         #if SCREENSHOT
         screenshotHarness(self)
         #endif
@@ -269,7 +280,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // Picks up edits to config.json each time the menu opens.
     func menuNeedsUpdate(_ menu: NSMenu) {
-        if ConfigFile.modificationDate() != loadedDate { reload() }
+        running = Running.list()
+        if ConfigFile.modificationDate() != loadedDate { reload() } else { rebuildMenu() }
+        updateIcon()
+    }
+
+    /// Polls the running folder so the menu bar icon shows when agents are working.
+    func refreshRunning() {
+        let now = Running.list()
+        guard now.map(\.id) != running.map(\.id) else { return }
+        running = now
+        updateIcon()
+        rebuildMenu()
+    }
+
+    func updateIcon() {
+        let busy = !running.isEmpty
+        let symbol = config?.icon.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: appName) }
+        statusItem.button?.image = symbol ?? Glyph.menuBarImage(running: busy)
+        statusItem.button?.imagePosition = .imageLeading
+        // The "A" turns its spark into a dot while busy; a custom symbol can't, so it shows the count.
+        statusItem.button?.title = running.count > 1 || (busy && symbol != nil) ? "\(running.count)" : ""
+        statusItem.button?.toolTip = busy ? "\(appName): \(running.count) running" : appName
     }
 
     @objc func reloadClicked(_ sender: Any?) { reload() }
@@ -283,8 +315,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             config = nil
             loadError = error.localizedDescription
         }
-        statusItem.button?.image = config?.icon.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: appName) }
-            ?? Glyph.menuBarImage()
+        running = Running.list()
+        updateIcon()
         rebuildMenu()
         checkAgents()
     }
@@ -306,6 +338,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func rebuildMenu() {
         guard let menu = statusItem.menu else { return }
         menu.removeAllItems()
+        if !running.isEmpty {
+            addHeader("Running", to: menu)
+            for task in running {
+                let item = NSMenuItem(title: "\(task.title) (\(task.agent), \(Running.elapsed(since: task.started)))",
+                                      action: nil, keyEquivalent: "")
+                let sub = NSMenu()
+                if let project = task.project { addHeader(project, to: sub) }
+                let stop = actionItem("Stop", #selector(stopTask(_:)))
+                stop.representedObject = task.id
+                sub.addItem(stop)
+                item.submenu = sub
+                menu.addItem(item)
+            }
+            if running.count > 1 { menu.addItem(actionItem("Stop all", #selector(stopAll))) }
+            menu.addItem(.separator())
+        }
         if loadError != nil {
             let item = NSMenuItem(title: "⚠︎ Problem in config.json. Click for details", action: #selector(showLoadError), keyEquivalent: "")
             item.target = self
@@ -421,12 +469,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if choice != .alertFirstButtonReturn { return }
             found[agent.command] = nil   // check again next time
         }
+        if let question = routine.confirm {
+            let choice = alert(question, "\(routine.title) · \(agent.name)", buttons: ["Start", "Cancel"])
+            guard choice == .alertFirstButtonReturn else { return }
+        }
         guard let prompt = routine.prompt ?? ask(agent: agent, routine: routine) else { return }
         do {
             try openInTerminal(agent: agent, routine: routine, prompt: prompt)
         } catch {
             alert("Couldn't open Terminal", error.localizedDescription)
         }
+    }
+
+    @objc func stopTask(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String, let task = Running.list().first(where: { $0.id == id }) else { return }
+        Running.stop(task)
+    }
+
+    @objc func stopAll() {
+        Running.list().forEach(Running.stop)
     }
 
     func ask(agent: Agent, routine: Routine) -> String? {

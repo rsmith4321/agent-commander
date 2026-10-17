@@ -7,7 +7,7 @@ import AppKit
 enum Glyph {
     /// Draws the mark in the current fill/stroke color, fitted to `rect`.
     /// Designed on an 18 x 18 grid.
-    static func draw(in rect: NSRect) {
+    static func draw(in rect: NSRect, running: Bool = false) {
         let s = min(rect.width, rect.height) / 18
         let ox = rect.midX - 9 * s, oy = rect.midY - 9 * s
         func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: ox + x * s, y: oy + y * s) }
@@ -23,6 +23,13 @@ enum Glyph {
         a.lineJoinStyle = .round
         a.stroke()
 
+        // While agents are running the spark becomes a solid dot.
+        if running {
+            let c = p(14.9, 13.9), r = 2.7 * s
+            NSBezierPath(ovalIn: NSRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)).fill()
+            return
+        }
+
         // Four-point spark.
         let c = p(14.9, 13.9), r = 3.1 * s, w = 0.75 * s
         let spark = NSBezierPath()
@@ -36,10 +43,10 @@ enum Glyph {
     }
 
     /// The menu bar icon: 18 pt, monochrome, template.
-    static func menuBarImage() -> NSImage {
+    static func menuBarImage(running: Bool = false) -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
             NSColor.black.set()
-            draw(in: rect)
+            draw(in: rect, running: running)
             return true
         }
         image.isTemplate = true

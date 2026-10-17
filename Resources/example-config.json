@@ -18,8 +18,10 @@
           "prompt": "Review the uncommitted changes in this repo. Point out bugs and risky spots, but don't edit anything."
         },
         {
+          "_comment": "confirm asks you this before starting, with Start and Cancel buttons.",
           "title": "Draft release notes",
-          "prompt": "Draft release notes from the commits since the last tag. Show them to me before saving anything."
+          "prompt": "Draft release notes from the commits since the last tag. Show them to me before saving anything.",
+          "confirm": "Is everything for this release committed?"
         },
         "-",
         {
