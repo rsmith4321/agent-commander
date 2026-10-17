@@ -1,14 +1,17 @@
+<img src="docs/icon.png" width="128" alt="Agent Commander icon">
+
 # Agent Commander
 
 A small Mac menu bar app for starting AI coding agents on the jobs you do
 over and over.
 
-Pick an agent (Claude Code, Codex, or any other command-line agent), then
-pick one of your saved routines. Terminal opens in the right folder with the
-agent already working on that routine's instructions. You watch it work and
-answer its questions, just as if you'd typed the command yourself.
+Pick a project, then one of its saved routines. Terminal opens in that
+project's folder with your agent (Claude Code, Codex, or any other
+command-line agent) already working on the routine's instructions. You watch
+it work and answer its questions, just as if you'd typed the command
+yourself.
 
-![The Agent Commander menu: pick an agent, then a routine](docs/menu.png)
+![The Agent Commander menu: projects with their routines, and the agent to use](docs/menu.png)
 
 It only runs when you click. There are no schedules, nothing runs in the
 background, and it doesn't collect or send anything anywhere.
@@ -24,7 +27,7 @@ Agent Commander turns each of those into one menu click.
 
 ### From the release (easiest)
 
-1. Download `Agent-Commander-1.0.1.zip` from the
+1. Download `Agent-Commander-1.1.0.zip` from the
    [latest release](https://github.com/rsmith4321/agent-commander/releases/latest).
 2. Double-click the zip and drag **Agent Commander** into your Applications
    folder.
@@ -34,7 +37,7 @@ Agent Commander turns each of those into one menu click.
    to open it once, then go to **System Settings → Privacy & Security** and
    click **Open Anyway**.
 
-A terminal icon appears in your menu bar. After that it opens normally.
+An "A" appears in your menu bar. After that it opens normally.
 
 You need macOS 13 or later and at least one agent installed, for example
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or
@@ -56,7 +59,9 @@ cd agent-commander
 
 ## Using it
 
-- Click the menu bar icon, choose an agent, then a routine.
+- Click the "A" in the menu bar, choose a project, then a routine.
+- Tick the agent you want under **Agent**. Every routine uses it until you
+  pick another, and Agent Commander remembers your choice.
 - A routine set to ask (like **Something else…**) shows a box where you type
   what you want done.
 - **Edit routines…** opens your settings file. Changes appear the next time
@@ -82,14 +87,27 @@ that explains every option. Here is a small example:
     { "name": "Claude Code", "command": "claude" },
     { "name": "Codex", "command": "codex" }
   ],
-  "routines": [
+  "defaultAgent": "Claude Code",
+  "projects": [
     {
-      "title": "Review my uncommitted changes",
+      "name": "My app",
       "folder": "~/Projects/my-app",
-      "prompt": "Review the uncommitted changes in this repo. Point out bugs, but don't edit anything."
+      "routines": [
+        {
+          "title": "Review my uncommitted changes",
+          "prompt": "Review the uncommitted changes in this repo. Point out bugs, but don't edit anything."
+        },
+        "-",
+        { "title": "Something else…", "prompt": null }
+      ]
     },
-    "-",
-    { "title": "Something else…", "folder": "~", "prompt": null }
+    {
+      "name": "My website",
+      "folder": "~/Projects/my-site",
+      "routines": [
+        { "title": "Check for broken links", "prompt": "Find broken links and list them. Don't change anything." }
+      ]
+    }
   ]
 }
 ```
@@ -99,19 +117,25 @@ Agent Commander finds commands the same way your Terminal does. If it can't,
 give the full path, like `"$HOME/.local/bin/claude"`. Commands can include
 options (`"claude --model opus"`). The prompt is added at the end; if your
 agent wants it somewhere else, put `{prompt}` where it goes.
+`defaultAgent` picks which one is ticked at first.
 
-**Routines** have a `title`, a `folder` where Terminal starts, and a
-`prompt`. Set `"prompt": null` to type the request each time.
+**Projects** have a `name`, a `folder` where Terminal starts, and their
+`routines`. With one project, its routines sit right in the menu; with
+several, each project gets a submenu.
+
+**Routines** have a `title` and a `prompt`. Set `"prompt": null` to type the
+request each time.
 
 **Extras:**
 
-- `"-"` adds a separator line, `{ "header": "Website" }` adds a gray label,
-  and `{ "submenu": "More", "routines": [...] }` makes a submenu.
-- The routines list at the top level is shared by every agent. An agent can
-  also have its own `"routines"` list, and `"sharedRoutines": false` hides
-  the shared ones for that agent.
-- `"menuBarIcon"` picks a different [SF Symbol](https://developer.apple.com/sf-symbols/)
-  for the menu bar, for example `"sparkles"`.
+- `"-"` adds a separator line, `{ "header": "Publishing" }` adds a gray
+  label, and `{ "submenu": "More", "routines": [...] }` makes a submenu.
+- A routine can have its own `"folder"`, or `"agent": "Codex"` to always use
+  that agent whatever is ticked.
+- A top-level `"routines"` list holds routines that don't belong to any
+  project. They show in the main menu.
+- `"menuBarIcon"` swaps the "A" for an [SF Symbol](https://developer.apple.com/sf-symbols/),
+  for example `"sparkles"`.
 
 JSON has no comments, so notes go in keys starting with `_`, such as
 `"_comment": "..."`. They're ignored.
@@ -124,7 +148,9 @@ the agent with your prompt, then deletes itself. Opening a script file this
 way doesn't need any special macOS permissions. The prompt is quoted safely,
 so quotes, dollar signs and other symbols reach the agent exactly as written.
 
-The whole app is one Swift file, [`Sources/main.swift`](Sources/main.swift).
+The app is two small Swift files: [`Sources/main.swift`](Sources/main.swift)
+and [`Sources/Glyph.swift`](Sources/Glyph.swift), which draws the "A" for
+both the menu bar and the app icon (`Tools/make-icon.sh` rebuilds the icon).
 
 ## Compared to Rota
 

@@ -1,9 +1,9 @@
 // Agent Commander: a menu bar launcher for AI coding agents.
 //
-// Pick an agent (Claude Code, Codex, or anything you add), then one of your
-// saved routines. Terminal opens in the routine's folder with the agent
-// already working on the routine's prompt, so you can watch it and answer
-// its questions. Nothing runs on a schedule or in the background.
+// Pick a project, then one of its saved routines. Terminal opens in the
+// project's folder with your chosen agent (Claude Code, Codex, or anything
+// you add) already working on the routine's prompt, so you can watch it and
+// answer its questions. Nothing runs on a schedule or in the background.
 //
 // Settings live in ~/.config/agent-commander/config.json (written with an
 // example on first run). Build with ./build.sh.
@@ -21,6 +21,8 @@ struct Routine {
     let folder: String
     let prompt: String?     // nil = ask for text when picked
     let question: String?   // optional wording for that question
+    let project: String?    // the project it belongs to, if any
+    let agent: String?      // always use this agent instead of the selected one
 }
 
 indirect enum MenuEntry {
@@ -33,13 +35,18 @@ indirect enum MenuEntry {
 struct Agent {
     let name: String
     let command: String
+}
+
+struct Project {
+    let name: String
     let routines: [MenuEntry]
-    let includeShared: Bool
 }
 
 struct Config {
     let agents: [Agent]
-    let routines: [MenuEntry]
+    let defaultAgent: String?
+    let projects: [Project]
+    let routines: [MenuEntry]   // routines outside any project
     let icon: String?
 }
 
@@ -85,12 +92,11 @@ enum ConfigFile {
             throw ConfigError(message: "config.json isn't valid JSON.\n\n\(detail)\n\nCommon causes: a missing comma, a missing quote, or curly quotes (“ ”) instead of straight ones.")
         }
         guard let root = json as? [String: Any] else {
-            throw ConfigError(message: "config.json should be one object: { \"agents\": [...], \"routines\": [...] }.")
+            throw ConfigError(message: "config.json should be one object: { \"agents\": [...], \"projects\": [...] }.")
         }
         guard let agentList = root["agents"] as? [Any], !agentList.isEmpty else {
             throw ConfigError(message: "config.json needs an \"agents\" list with at least one agent.")
         }
-        let shared = try parseEntries(root["routines"] ?? [], where: "routines")
         var agents: [Agent] = []
         for (i, value) in agentList.enumerated() {
             let place = "agent \(i + 1)"
@@ -103,16 +109,35 @@ enum ConfigFile {
             guard let command = nonEmpty(obj["command"]) else {
                 throw ConfigError(message: "Agent \"\(name)\" needs a \"command\", for example \"claude\" or a full path.")
             }
-            let own = try parseEntries(obj["routines"] ?? [], where: "\(name) routines")
-            let includeShared = obj["sharedRoutines"] as? Bool ?? true
-            agents.append(Agent(name: name, command: command, routines: own, includeShared: includeShared))
+            agents.append(Agent(name: name, command: command))
         }
-        return Config(agents: agents, routines: shared, icon: nonEmpty(root["menuBarIcon"]))
+        let names = Set(agents.map(\.name))
+        let defaultAgent = nonEmpty(root["defaultAgent"])
+        if let d = defaultAgent, !names.contains(d) {
+            throw ConfigError(message: "\"defaultAgent\" is \"\(d)\", but there's no agent with that name.")
+        }
+
+        guard let projectList = (root["projects"] ?? []) as? [Any] else {
+            throw ConfigError(message: "\"projects\" should be a list in square brackets.")
+        }
+        var projects: [Project] = []
+        for (i, value) in projectList.enumerated() {
+            guard let obj = value as? [String: Any], let name = nonEmpty(obj["name"]) else {
+                throw ConfigError(message: "project \(i + 1) needs a \"name\".")
+            }
+            let folder = nonEmpty(obj["folder"]) ?? "~"
+            projects.append(Project(name: name, routines: try parseEntries(obj["routines"] ?? [], where: name,
+                                                                           folder: folder, project: name, agents: names)))
+        }
+        let loose = try parseEntries(root["routines"] ?? [], where: "routines", folder: "~", project: nil, agents: names)
+        return Config(agents: agents, defaultAgent: defaultAgent, projects: projects, routines: loose,
+                      icon: nonEmpty(root["menuBarIcon"]))
     }
 
-    static func parseEntries(_ value: Any, where place: String) throws -> [MenuEntry] {
+    static func parseEntries(_ value: Any, where place: String, folder: String, project: String?,
+                             agents: Set<String>) throws -> [MenuEntry] {
         guard let list = value as? [Any] else {
-            throw ConfigError(message: "\"\(place)\" should be a list in square brackets.")
+            throw ConfigError(message: "The routines for \"\(place)\" should be a list in square brackets.")
         }
         return try list.enumerated().map { i, item in
             let spot = "item \(i + 1) of \(place)"
@@ -123,7 +148,8 @@ enum ConfigFile {
             if obj["separator"] as? Bool == true { return .separator }
             if let header = nonEmpty(obj["header"]) { return .header(header) }
             if let name = nonEmpty(obj["submenu"]) {
-                return .submenu(name, try parseEntries(obj["routines"] ?? [], where: name))
+                return .submenu(name, try parseEntries(obj["routines"] ?? [], where: name, folder: folder,
+                                                       project: project, agents: agents))
             }
             guard let title = nonEmpty(obj["title"]) else {
                 throw ConfigError(message: "\(spot) needs a \"title\".")
@@ -134,10 +160,16 @@ enum ConfigFile {
             case let s as String: prompt = s.isEmpty ? nil : s
             default: throw ConfigError(message: "The prompt for \"\(title)\" should be text in quotes, or null to ask each time.")
             }
+            let agent = nonEmpty(obj["agent"])
+            if let agent, !agents.contains(agent) {
+                throw ConfigError(message: "\"\(title)\" asks for the agent \"\(agent)\", but there's no agent with that name.")
+            }
             return .routine(Routine(title: title,
-                                    folder: nonEmpty(obj["folder"]) ?? "~",
+                                    folder: nonEmpty(obj["folder"]) ?? folder,
                                     prompt: prompt,
-                                    question: nonEmpty(obj["question"])))
+                                    question: nonEmpty(obj["question"]),
+                                    project: project,
+                                    agent: agent))
         }
     }
 
@@ -191,7 +223,7 @@ func openInTerminal(agent: Agent, routine: Routine, prompt: String) throws {
     rm -f -- "$0"
     cd -- \(shellQuote(folder)) || { echo; echo \(shellQuote("\(appName) can't open the folder \(folder). Is the drive connected?")); read -k 1; exit 1; }
     clear
-    printf '%s\\n%s\\n\\n' \(shellQuote("\(appName): \(agent.name) · \(routine.title)")) \(shellQuote("Folder: \(folder)"))
+    printf '%s\\n%s\\n\\n' \(shellQuote("\(appName): " + [agent.name, routine.project, routine.title].compactMap { $0 }.joined(separator: " · "))) \(shellQuote("Folder: \(folder)"))
     \(command)
     code=$?
     if (( code == 127 )); then
@@ -210,10 +242,9 @@ func openInTerminal(agent: Agent, routine: Routine, prompt: String) throws {
 
 // MARK: - App
 
-final class LaunchRequest: NSObject {
-    let agent: Agent
+final class RoutineBox: NSObject {
     let routine: Routine
-    init(agent: Agent, routine: Routine) { self.agent = agent; self.routine = routine }
+    init(_ routine: Routine) { self.routine = routine }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -252,9 +283,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             config = nil
             loadError = error.localizedDescription
         }
-        let symbol = config?.icon ?? "terminal"
-        statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: appName)
-            ?? NSImage(systemSymbolName: "terminal", accessibilityDescription: appName)
+        statusItem.button?.image = config?.icon.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: appName) }
+            ?? Glyph.menuBarImage()
         rebuildMenu()
         checkAgents()
     }
@@ -281,15 +311,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item.target = self
             menu.addItem(item)
         } else if let config {
-            if config.agents.count == 1, let agent = config.agents.first {
-                addHeader(agentTitle(agent), to: menu)
-                addRoutines(for: agent, config: config, to: menu)
+            if config.projects.count == 1 && config.routines.isEmpty, let project = config.projects.first {
+                addHeader(project.name, to: menu)
+                add(project.routines, to: menu)
             } else {
-                for agent in config.agents {
-                    let item = NSMenuItem(title: agentTitle(agent), action: nil, keyEquivalent: "")
+                for project in config.projects {
+                    let item = NSMenuItem(title: project.name, action: nil, keyEquivalent: "")
                     let sub = NSMenu()
-                    addRoutines(for: agent, config: config, to: sub)
+                    add(project.routines, to: sub)
+                    if project.routines.isEmpty { addHeader("No routines yet", to: sub) }
                     item.submenu = sub
+                    menu.addItem(item)
+                }
+                add(config.routines, to: menu)
+            }
+            if config.projects.isEmpty && config.routines.isEmpty { addHeader("No routines yet", to: menu) }
+            if config.agents.count > 1 {
+                menu.addItem(.separator())
+                addHeader("Agent", to: menu)
+                let selected = selectedAgent(in: config)
+                for agent in config.agents {
+                    let item = actionItem(agentTitle(agent), #selector(selectAgent(_:)))
+                    item.representedObject = agent.name
+                    item.state = agent.name == selected.name ? .on : .off
                     menu.addItem(item)
                 }
             }
@@ -308,21 +352,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         found[agent.command] == false ? "\(agent.name) (not found)" : agent.name
     }
 
-    func addRoutines(for agent: Agent, config: Config, to menu: NSMenu) {
-        var entries = agent.routines
-        if agent.includeShared && !config.routines.isEmpty {
-            if !entries.isEmpty { entries.append(.separator) }
-            entries += config.routines
-        }
-        if entries.isEmpty {
-            let empty = NSMenuItem(title: "No routines yet", action: nil, keyEquivalent: "")
-            empty.isEnabled = false
-            menu.addItem(empty)
-        }
-        add(entries, agent: agent, to: menu)
+    /// The agent picked in the menu, else "defaultAgent", else the first one.
+    func selectedAgent(in config: Config) -> Agent {
+        let saved = UserDefaults.standard.string(forKey: "selectedAgent")
+        return config.agents.first { $0.name == saved }
+            ?? config.agents.first { $0.name == config.defaultAgent }
+            ?? config.agents[0]
     }
 
-    func add(_ entries: [MenuEntry], agent: Agent, to menu: NSMenu) {
+    @objc func selectAgent(_ sender: NSMenuItem) {
+        UserDefaults.standard.set(sender.representedObject as? String, forKey: "selectedAgent")
+        rebuildMenu()
+    }
+
+    func add(_ entries: [MenuEntry], to menu: NSMenu) {
         for entry in entries {
             switch entry {
             case .separator:
@@ -332,12 +375,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .submenu(let name, let children):
                 let item = NSMenuItem(title: name, action: nil, keyEquivalent: "")
                 let sub = NSMenu()
-                add(children, agent: agent, to: sub)
+                add(children, to: sub)
                 item.submenu = sub
                 menu.addItem(item)
             case .routine(let routine):
-                let item = actionItem(routine.title, #selector(run(_:)))
-                item.representedObject = LaunchRequest(agent: agent, routine: routine)
+                let title = routine.agent.map { "\(routine.title) (\($0))" } ?? routine.title
+                let item = actionItem(title, #selector(run(_:)))
+                item.representedObject = RoutineBox(routine)
                 item.toolTip = routine.prompt.map { "\(expandFolder(routine.folder))\n\n\($0)" } ?? expandFolder(routine.folder)
                 menu.addItem(item)
             }
@@ -359,8 +403,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Actions
 
     @objc func run(_ sender: NSMenuItem) {
-        guard let request = sender.representedObject as? LaunchRequest else { return }
-        let agent = request.agent, routine = request.routine
+        guard let routine = (sender.representedObject as? RoutineBox)?.routine, let config else { return }
+        let agent = config.agents.first { $0.name == routine.agent } ?? selectedAgent(in: config)
         var isDir: ObjCBool = false
         let folder = expandFolder(routine.folder)
         guard FileManager.default.fileExists(atPath: folder, isDirectory: &isDir), isDir.boolValue else {
@@ -388,7 +432,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func ask(agent: Agent, routine: Routine) -> String? {
         NSApp.activate(ignoringOtherApps: true)
         let a = NSAlert()
-        a.messageText = (routine.question ?? "What should {agent} do?").replacingOccurrences(of: "{agent}", with: agent.name)
+        let question = routine.question ?? (routine.project == nil ? "What should {agent} do?" : "What should {agent} do in {project}?")
+        a.messageText = question.replacingOccurrences(of: "{agent}", with: agent.name)
+            .replacingOccurrences(of: "{project}", with: routine.project ?? "")
         a.informativeText = "Folder: \(expandFolder(routine.folder))"
         a.addButton(withTitle: "Start")
         a.addButton(withTitle: "Cancel")

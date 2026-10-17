@@ -27,13 +27,8 @@ final class Backdrop: NSView {
         NSRect(x: 0, y: bounds.height - barHeight, width: bounds.width, height: barHeight).fill()
         (dark ? NSColor(white: 1, alpha: 0.18) : NSColor(white: 0, alpha: 0.10)).setFill()
         NSBezierPath(roundedRect: iconRect.insetBy(dx: 2, dy: 4), xRadius: 6, yRadius: 6).fill()
-        let cfg = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
-        if let img = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)?.withSymbolConfiguration(cfg) {
-            let tinted = NSImage(size: img.size, flipped: false) { r in
-                img.draw(in: r); (dark ? NSColor.white : NSColor.black).set(); r.fill(using: .sourceAtop); return true }
-            let s = tinted.size
-            tinted.draw(in: NSRect(x: iconRect.midX - s.width / 2, y: iconRect.midY - s.height / 2, width: s.width, height: s.height))
-        }
+        (dark ? NSColor.white : NSColor.black).set()
+        Glyph.draw(in: NSRect(x: iconRect.midX - 9, y: iconRect.midY - 9, width: 18, height: 18))
     }
 }
 
@@ -42,13 +37,16 @@ var backdropWindow: NSWindow?
 func screenshotHarness(_ d: AppDelegate) {
     let out = ProcessInfo.processInfo.environment["SHOT_OUT"] ?? "/tmp/menu.png"
     DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-        guard let buttonWindow = d.statusItem.button?.window, let screen = buttonWindow.screen else { exit(2) }
-        let icon = buttonWindow.frame               // Cocoa global coords
+        // Use a Retina screen when there is one, so the image comes out sharp, and
+        // pretend the menu bar icon sits near its top right.
+        guard let screen = NSScreen.screens.first(where: { $0.backingScaleFactor >= 2 }) ?? NSScreen.main else { exit(2) }
+        let barH = screen.frame.maxY - screen.visibleFrame.maxY
+        let icon = NSRect(x: screen.frame.maxX - 640, y: screen.frame.maxY - barH, width: 34, height: barH)
         let sf = screen.frame
         let left = max(sf.minX, icon.minX - 500), right = min(sf.maxX, icon.minX + 800)
         let bd = NSRect(x: left, y: sf.maxY - 420, width: right - left, height: 420)
         let w = NSWindow(contentRect: bd, styleMask: .borderless, backing: .buffered, defer: false)
-        w.level = NSWindow.Level(rawValue: 50)
+        w.level = .popUpMenu   // above other apps' menu bar popovers; our menu opens on top of it
         w.isOpaque = true
         let v = Backdrop(frame: NSRect(origin: .zero, size: bd.size))
         v.barHeight = sf.maxY - screen.visibleFrame.maxY
@@ -65,7 +63,8 @@ func screenshotHarness(_ d: AppDelegate) {
                 let pid = ProcessInfo.processInfo.processIdentifier
                 let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]]
                 var union = CGRect(x: icon.minX, y: primaryH - icon.maxY, width: icon.width, height: icon.height)
-                for win in info where (win[kCGWindowOwnerPID as String] as? Int32) == pid && (win[kCGWindowLayer as String] as? Int) == 101 {
+                for win in info where (win[kCGWindowOwnerPID as String] as? Int32) == pid && (win[kCGWindowLayer as String] as? Int) == 101
+                    && (win[kCGWindowNumber as String] as? Int) != w.windowNumber {
                     let b = win[kCGWindowBounds as String] as! [String: CGFloat]
                     union = union.union(CGRect(x: b["X"]!, y: b["Y"]!, width: b["Width"]!, height: b["Height"]!))
                 }
@@ -79,6 +78,6 @@ func screenshotHarness(_ d: AppDelegate) {
             (3.1, { exit(0) }),
         ]
         for (t, f) in steps { RunLoop.main.add(Timer(timeInterval: t, repeats: false) { _ in f() }, forMode: .common) }
-        d.statusItem.button?.performClick(nil)
+        d.statusItem.menu!.popUp(positioning: nil, at: NSPoint(x: icon.minX, y: icon.minY - 3), in: nil)
     }
 }

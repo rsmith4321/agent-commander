@@ -1,12 +1,13 @@
 # Agent Commander settings
 
-This folder holds `config.json`, the list of agents and routines shown in the
-Agent Commander menu. Open it from the menu with **Edit routines…**. Changes
-show up the next time you open the menu (or choose **Reload**).
+This folder holds `config.json`, the list of agents, projects and routines
+shown in the Agent Commander menu. Open it from the menu with **Edit
+routines…**. Changes show up the next time you open the menu (or choose
+**Reload**).
 
 If the file has a mistake, the menu shows "Problem in config.json" with
-details. If you want to start over, delete `config.json` and Agent Commander
-writes a fresh example next time it starts.
+details. To start over, delete `config.json` and Agent Commander writes a
+fresh example next time it starts.
 
 ## Agents
 
@@ -14,7 +15,8 @@ writes a fresh example next time it starts.
 "agents": [
   { "name": "Claude Code", "command": "claude" },
   { "name": "Codex", "command": "codex" }
-]
+],
+"defaultAgent": "Claude Code"
 ```
 
 - `name`: what the menu shows.
@@ -25,38 +27,60 @@ writes a fresh example next time it starts.
 - The routine's prompt is added to the end of the command. If your agent
   needs it somewhere else, put `{prompt}` where it goes, for example
   `"aider --message {prompt}"`.
-- `routines` (optional): routines that only this agent shows. They appear
-  above the shared ones.
-- `sharedRoutines` (optional): set to `false` to hide the shared routines
-  for this agent.
+- `defaultAgent` (optional): which agent is ticked at first. Otherwise it's
+  the first one.
 
-## Routines
+With more than one agent, the menu has an **Agent** section. Tick the one
+you want and every routine uses it until you pick another.
+
+## Projects
 
 ```json
-"routines": [
-  { "title": "Review my changes", "folder": "~/Projects/my-app", "prompt": "Review my uncommitted changes." },
-  { "title": "Something else…", "folder": "~", "prompt": null }
+"projects": [
+  {
+    "name": "My app",
+    "folder": "~/Projects/my-app",
+    "routines": [
+      { "title": "Review my changes", "prompt": "Review my uncommitted changes." },
+      { "title": "Something else…", "prompt": null }
+    ]
+  }
 ]
 ```
 
+- `name`: what the menu shows. With one project, its routines sit right in
+  the menu under its name. With several, each project gets a submenu.
+- `folder`: where Terminal starts for this project's routines. `~` means
+  your home folder.
+- `routines`: the project's routines.
+
+## Routines
+
 - `title`: what the menu shows.
-- `folder`: where Terminal starts. `~` means your home folder. Defaults to `~`.
 - `prompt`: what the agent is asked to do. Use `null` to type it each time.
-- `question` (optional): the wording of that question when `prompt` is `null`. `{agent}` becomes the agent's name, as in
-  `"What should {agent} do on the website?"`.
+- `question` (optional): the wording of that question when `prompt` is
+  `null`. `{agent}` and `{project}` are filled in, as in
+  `"What should {agent} do on {project}?"`.
+- `folder` (optional): use a different folder for just this routine.
+- `agent` (optional): always use this agent for this routine, whatever is
+  ticked in the menu. The menu shows the agent's name after the title.
+
+A top-level `"routines"` list (outside any project) also works. Those
+routines appear in the main menu and need their own `folder` (it defaults
+to `~`).
 
 ## Menu layout
 
 Inside any routines list you can also use:
 
 - `"-"`: a separator line.
-- `{ "header": "Website" }`: a small gray label.
+- `{ "header": "Publishing" }`: a small gray label.
 - `{ "submenu": "More", "routines": [ ... ] }`: a submenu with its own routines.
 
 ## Other settings
 
-- `menuBarIcon` (optional, top level): the name of an SF Symbol for the menu
-  bar, for example `"sparkles"`. The default is `"terminal"`.
+- `menuBarIcon` (optional, top level): the name of an SF Symbol to use in
+  the menu bar instead of the "A", for example `"sparkles"`.
 
 JSON has no comments, so notes go in keys that start with `_`, like
 `"_comment": "..."`. Agent Commander ignores them.

@@ -21,7 +21,7 @@ else
   swiftc -O -swift-version 5 -o "$APP/Contents/MacOS/$NAME" Sources/*.swift
 fi
 cp Resources/Info.plist "$APP/Contents/Info.plist"
-cp Resources/example-config.json Resources/config-README.md "$APP/Contents/Resources/"
+cp Resources/example-config.json Resources/config-README.md Resources/AppIcon.icns "$APP/Contents/Resources/"
 codesign --force --sign - "$APP"
 
 if (( RELEASE )); then
