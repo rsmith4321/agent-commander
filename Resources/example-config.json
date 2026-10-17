@@ -1,0 +1,41 @@
+{
+  "_comment": "Agent Commander settings. Keys that start with _ are notes and are ignored. README.md in this folder explains every option. After saving, open the menu again (or choose Reload).",
+
+  "agents": [
+    { "name": "Claude Code", "command": "claude" },
+    { "name": "Codex", "command": "codex" }
+  ],
+
+  "routines": [
+    { "header": "My app" },
+    {
+      "_comment": "Change the folder to one of your projects.",
+      "title": "Review my uncommitted changes",
+      "folder": "~/Projects/my-app",
+      "prompt": "Review the uncommitted changes in this repo. Point out bugs and risky spots, but don't edit anything."
+    },
+    {
+      "title": "Draft release notes",
+      "folder": "~/Projects/my-app",
+      "prompt": "Draft release notes from the commits since the last tag. Show them to me before saving anything."
+    },
+    "-",
+    {
+      "submenu": "Housekeeping",
+      "routines": [
+        {
+          "title": "Tidy my Downloads folder",
+          "folder": "~/Downloads",
+          "prompt": "Suggest how to tidy this folder. List the moves you'd make and wait for my OK before changing anything."
+        }
+      ]
+    },
+    "-",
+    {
+      "_comment": "A null prompt means Agent Commander asks you what to do each time.",
+      "title": "Something else…",
+      "folder": "~",
+      "prompt": null
+    }
+  ]
+}
