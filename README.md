@@ -24,7 +24,7 @@ Agent Commander turns each of those into one menu click.
 
 ### From the release (easiest)
 
-1. Download `Agent-Commander-1.0.0.zip` from the
+1. Download `Agent-Commander-1.0.1.zip` from the
    [latest release](https://github.com/rsmith4321/agent-commander/releases/latest).
 2. Double-click the zip and drag **Agent Commander** into your Applications
    folder.
@@ -62,6 +62,8 @@ cd agent-commander
 - **Edit routines…** opens your settings file. Changes appear the next time
   you open the menu, or right away with **Reload**.
 - **Open at login** starts Agent Commander when you log in.
+  (Setting up a Mac with a script? `open -a "Agent Commander" --args
+  --open-at-login on` does the same.)
 
 If something is wrong, it tells you: a mistake in the settings file shows up
 at the top of the menu with details, an agent it can't find is marked "(not

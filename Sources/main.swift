@@ -225,6 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         ConfigFile.createIfMissing()
+        applyLoginArgument()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let menu = NSMenu()
         menu.delegate = self
@@ -420,6 +421,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func openProjectPage() {
         if let url = URL(string: projectURL) { NSWorkspace.shared.open(url) }
+    }
+
+    // For setup scripts: open -a "Agent Commander" --args --open-at-login on (or off)
+    func applyLoginArgument() {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "--open-at-login") else { return }
+        let on = i + 1 >= args.count || args[i + 1] != "off"
+        if on && SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
+        if !on && SMAppService.mainApp.status == .enabled { try? SMAppService.mainApp.unregister() }
+        let status: [SMAppService.Status: String] = [.enabled: "on", .notRegistered: "off",
+                                                     .requiresApproval: "waiting for approval in System Settings › General › Login Items"]
+        print("Open at login: \(status[SMAppService.mainApp.status] ?? "unknown")")
+        fflush(stdout)
     }
 
     @objc func toggleLogin(_ sender: NSMenuItem) {
